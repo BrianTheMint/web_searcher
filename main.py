@@ -1,14 +1,18 @@
 import sys
-from crawler import crawl
-from utils import get_urls_to_search, get_base_domains
+from crawler import crawl  # Ensure you import the crawl function from crawler.py
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python main.py <keyword1> <keyword2> ...")
+        print("Usage: python main.py <regex1> <regex2> ...")
         sys.exit(1)
 
     keywords = sys.argv[1:]
-    urls = get_urls_to_search("to_search.txt")
-    base_domains = get_base_domains(urls)
-    for url in urls:
-        crawl(url, keywords, base_domains)
+
+    try:
+        with open('subreddits.txt', 'r') as file:
+            subreddits = file.readlines()
+    except FileNotFoundError:
+        print("Error: 'subreddits.txt' file not found.")
+        sys.exit(1)
+
+    crawl(subreddits, keywords)

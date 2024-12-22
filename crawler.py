@@ -1,35 +1,67 @@
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+import sys
+import praw
 import re
-from utils import save_url, save_found_url
 
 visited = set()
 
-def crawl(url, keywords, base_domains):
-    if url in visited:
-        return
-    visited.add(url)
-    save_url(url)
+# Initialize the Reddit API client
+reddit = praw.Reddit(
+    client_id='3rguFN9z-UXs1SxOVdZ9jA',
+    client_secret='bX2iTxQKF5JeLs-1I20l1vHDIljWvQ',
+    user_agent='search-bot'
+)
+
+def save_url(url):
+    # Implement the logic to save the URL
+    print(f"URL saved: {url}")
+
+def save_found_url(url, keyword, context):
+    # Implement the logic to save the found URL with context
+    print(f"Found URL: {url}, Keyword: {keyword}, Context: {context}")
+
+def crawl(subreddits, keywords):
+    for subreddit_name in subreddits:
+        try:
+            subreddit = reddit.subreddit(subreddit_name.strip())
+        except Exception as e:
+            print(f"Error accessing subreddit '{subreddit_name}': {e}")
+            continue
+
+        for submission in subreddit.hot(limit=10):  # Adjust the limit as needed
+            print(f"Visiting submission: {submission.url}")
+            submission_text = submission.title.lower() + " " + submission.selftext.lower()
+
+            for keyword in keywords:
+                for match in re.finditer(keyword, submission_text):
+                    start = max(match.start() - 30, 0)
+                    end = min(match.end() + 30, len(submission_text))
+                    context = submission_text[start:end]
+                    save_found_url(submission.url, keyword.strip(), context)
+
+            for comment in submission.comments.list():
+                if isinstance(comment, praw.models.MoreComments):
+                    continue
+                print(f"Visiting comment: {comment.permalink}")
+                comment_text = comment.body.lower()
+                for keyword in keywords:
+                    for match in re.finditer(keyword, comment_text):
+                        start = max(match.start() - 30, 0)
+                        end = min(match.end() + 30, len(comment_text))
+                        context = comment_text[start:end]
+                        save_found_url(comment.permalink, keyword.strip(), context)
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python crawler.py <regex1> <regex2> ...")
+        sys.exit(1)
+
+    keywords = sys.argv[1:]
 
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-    except requests.RequestException:
-        return
+        with open('subreddits.txt', 'r') as file:
+            subreddits = file.readlines()
+    except FileNotFoundError:
+        print("Error: 'subreddits.txt' file not found.")
+        sys.exit(1)
 
-    soup = BeautifulSoup(response.text, 'html.parser')
-    page_text = soup.get_text().lower()
-
-    for keyword in keywords:
-        for match in re.finditer(re.escape(keyword.lower()), page_text):
-            start = max(match.start() - 30, 0)
-            end = min(match.end() + 30, len(page_text))
-            context = page_text[start:end]
-            save_found_url(url, keyword.strip(), context)
-
-    for link in soup.find_all('a', href=True):
-        next_url = urljoin(url, link['href'])
-        next_domain = urlparse(next_url).netloc
-        if next_url.startswith("http") and any(base_domain in next_domain for base_domain in base_domains):
-            crawl(next_url, keywords, base_domains)
+    crawl(subreddits, keywords)
